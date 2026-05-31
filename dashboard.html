@@ -926,36 +926,53 @@ function handleBulkEmail() {
     return;
   }
 
-  var subject = localStorage.getItem(STORAGE_ESUBJ) || "";
-  var body = localStorage.getItem(STORAGE_EBODY) || "";
-  var bcc = pending.map(function(c) { return c.email; }).join(",");
+  /* Build mailto */
+  var bcc = pending.map(function(c) { return c.email; }).filter(Boolean).join(",");
+  var subject = encodeURIComponent(localStorage.getItem(STORAGE_ESUBJ) || "");
+  var body = encodeURIComponent(localStorage.getItem(STORAGE_EBODY) || "");
+  var mailto = "mailto:?bcc=" + encodeURIComponent(bcc) + "&subject=" + subject + "&body=" + body;
 
-  var mailto = "mailto:?bcc=" + encodeURIComponent(bcc)
-    + "&subject=" + encodeURIComponent(subject)
-    + "&body=" + encodeURIComponent(body);
-
+  /* Open mail client */
   window.location.href = mailto;
 
+  /* When user returns to this tab, ask if they sent it */
+  var asked = false;
   var count = pending.length;
-  showModal(
-    "Mark as Sent?",
-    "Did you send to " + count + " recipients? Mark them all as sent so they won't be selected next time.",
-    "Yes, Mark Sent",
-    "btn-green"
-  ).then(function(confirmed) {
-    if (confirmed) {
-      var pendingIds = {};
-      for (var i = 0; i < pending.length; i++) pendingIds[pending[i]._id] = true;
-      var all = getContacts();
-      for (var j = 0; j < all.length; j++) {
-        if (pendingIds[all[j]._id]) all[j].email_sent = true;
-      }
-      saveContacts(all);
-      renderStats();
-      applyFilters();
-      showToast("✅ " + count + " emails marked as sent", "success");
+
+  function askOnReturn() {
+    if (asked) return;
+    if (document.visibilityState === "visible") {
+      asked = true;
+      document.removeEventListener("visibilitychange", askOnReturn);
+      window.removeEventListener("pageshow", askOnReturn);
+
+      /* Small delay so the tab switch feels natural */
+      setTimeout(function() {
+        showModal(
+          "✉️ Did You Send the Email?",
+          "Did you successfully send the email to " + count + " recipient" + (count > 1 ? "s" : "") + "? If yes, they will be marked as sent and won't be selected next time.",
+          "Yes, Mark as Sent",
+          "btn-green"
+        ).then(function(confirmed) {
+          if (confirmed) {
+            var pendingIds = {};
+            for (var i = 0; i < pending.length; i++) pendingIds[pending[i]._id] = true;
+            var all = getContacts();
+            for (var j = 0; j < all.length; j++) {
+              if (pendingIds[all[j]._id]) all[j].email_sent = true;
+            }
+            saveContacts(all);
+            renderStats();
+            applyFilters();
+            showToast("✅ " + count + " emails marked as sent", "success");
+          }
+        });
+      }, 400);
     }
-  });
+  }
+
+  document.addEventListener("visibilitychange", askOnReturn);
+  window.addEventListener("pageshow", askOnReturn);
 }
 
 /* ================================================================
